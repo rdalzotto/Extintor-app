@@ -464,6 +464,25 @@
 </div>
 
 
+
+<!-- VOICE MODAL -->
+<div class="admin-lock-overlay" id="voiceModal" style="display:none;">
+  <div class="modal-sheet" style="border-radius:20px 20px 0 0;padding:24px 16px;">
+    <div class="modal-handle"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="width:40px;height:40px;background:var(--green-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px;">🎙</div>
+      <div>
+        <div style="font-size:16px;font-weight:700;">Dictado por voz</div>
+        <div id="voiceStatus" style="font-size:12px;color:var(--gray-500);margin-top:2px;">Tocá el micrófono para empezar</div>
+      </div>
+    </div>
+    <textarea id="voiceTranscript" placeholder="El texto dictado aparece acá. Podés editarlo antes de confirmar..." style="width:100%;min-height:120px;padding:12px;border:1.5px solid var(--gray-300);border-radius:10px;font-size:15px;font-family:var(--font);resize:vertical;margin-bottom:12px;"></textarea>
+    <button id="voiceBtnRecord" class="btn btn-primary" style="margin-bottom:8px;" onclick="startVoiceRecording()">🎙 Empezar a dictar</button>
+    <button id="voiceBtnConfirm" class="btn btn-success" style="display:none;margin-bottom:8px;" onclick="confirmVoiceText()">✓ Confirmar y agregar texto</button>
+    <button class="btn btn-secondary" style="width:100%;" onclick="closeVoiceModal()">Cancelar</button>
+  </div>
+</div>
+
 <!-- INFO MODAL -->
 <div class="admin-lock-overlay" id="infoModal" style="display:none;" onclick="if(event.target===this)closeInfoModal()">
   <div class="admin-lock-box" style="max-width:360px;">
@@ -797,92 +816,148 @@ function getGPS(){ if(!navigator.geolocation){showToast('GPS no disponible');ret
 
 let recognition = null;
 let activeVoiceBtn = null;
+let voiceTargetId = null;
 
+// ── VOICE MODAL ────────────────────────────────────────────────────────────
 function toggleVoice(targetId, btnId) {
-  // HTTPS check — mic requires secure context
-  if (location.protocol === 'file:') {
-    showVoiceHttpsWarning();
-    return;
-  }
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    showVoiceHttpsWarning();
-    return;
-  }
-
+  if (location.protocol === 'file:') { showVoiceHttpsWarning(); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
-    showModal('Dictado no disponible', 'Tu navegador no soporta dictado de voz.\n\nUsá Google Chrome (Android) o Safari (iPhone) con la app publicada en HTTPS.');
+    showModal('Dictado no disponible', 'Usá Google Chrome en Android o Safari en iPhone.');
     return;
   }
-
-  // Stop if already recording
-  if (recognition) {
-    recognition.stop();
-    recognition = null;
-    stopVoiceBtn(activeVoiceBtn);
-    activeVoiceBtn = null;
-    showToast('🎙 Dictado detenido');
-    return;
-  }
-
-  // Request mic permission explicitly first
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(() => startRecognition(targetId, btnId))
-    .catch(err => {
-      if (err.name === 'NotAllowedError') {
-        showModal('Micrófono bloqueado', 'El navegador bloqueó el micrófono.\n\nPara habilitarlo:\n1. Tocá el ícono 🔒 en la barra de dirección\n2. Buscá "Micrófono"\n3. Cambiá a "Permitir"\n4. Recargá la página');
-      } else {
-        showToast('Error de micrófono: ' + err.message);
-      }
-    });
+  voiceTargetId = targetId;
+  activeVoiceBtn = btnId;
+  // Show voice modal
+  document.getElementById('voiceModal').style.display = 'flex';
+  document.getElementById('voiceTranscript').value = '';
+  document.getElementById('voiceStatus').textContent = 'Tocá el micrófono para empezar';
+  document.getElementById('voiceStatus').style.color = 'var(--gray-500)';
+  document.getElementById('voiceBtnRecord').style.background = 'var(--green)';
+  document.getElementById('voiceBtnRecord').textContent = '🎙 Empezar a dictar';
+  document.getElementById('voiceBtnConfirm').style.display = 'none';
 }
 
-function startRecognition(targetId, btnId) {
+function startVoiceRecording() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SR();
-  recognition.lang = 'es-AR';
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  activeVoiceBtn = btnId;
-  startVoiceBtn(btnId);
-  showToast('🎙 Escuchando... tocá el micrófono para detener');
+  // Chrome Android fix: continuous=false, interimResults=false
+  // evita el bug de resultados duplicados con confianza 0
+  recognition.lang = 'es-ES';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 3;
+
+  const statusEl = document.getElementById('voiceStatus');
+  const transcriptEl = document.getElementById('voiceTranscript');
+  const recordBtn = document.getElementById('voiceBtnRecord');
+  const confirmBtn = document.getElementById('voiceBtnConfirm');
+
+  recognition.onstart = () => {
+    statusEl.textContent = '🔴 Escuchando... hablá ahora';
+    statusEl.style.color = 'var(--red)';
+    recordBtn.style.background = 'var(--orange)';
+    recordBtn.textContent = '⏹ Detener';
+    recordBtn.onclick = stopVoiceRecording;
+  };
 
   recognition.onresult = e => {
-    let finalText = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' ';
+    // Tomar el resultado con mayor confianza
+    let bestText = '';
+    let bestConf = -1;
+    for (let i = 0; i < e.results.length; i++) {
+      const result = e.results[i];
+      for (let j = 0; j < result.length; j++) {
+        if (result[j].confidence > bestConf && result[j].transcript.trim() !== '') {
+          bestConf = result[j].confidence;
+          bestText = result[j].transcript;
+        }
+      }
     }
-    if (finalText) {
-      const el = document.getElementById(targetId);
-      if (el) { el.value += finalText; }
+    if (bestText.trim()) {
+      const existing = transcriptEl.value.trim();
+      transcriptEl.value = existing ? existing + ' ' + bestText.trim() : bestText.trim();
+      transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      statusEl.textContent = '✓ Texto capturado. Podés seguir dictando o confirmar.';
+      statusEl.style.color = 'var(--ok)';
+      confirmBtn.style.display = 'flex';
     }
   };
+
+  recognition.onnomatch = () => {
+    statusEl.textContent = 'No entendí. Hablá más claro e intentá de nuevo.';
+    statusEl.style.color = 'var(--orange)';
+    recordBtn.style.background = 'var(--green)';
+    recordBtn.textContent = '🎙 Intentar de nuevo';
+    recordBtn.onclick = startVoiceRecording;
+    recognition = null;
+  };
+
   recognition.onerror = err => {
-    stopVoiceBtn(activeVoiceBtn);
-    recognition = null; activeVoiceBtn = null;
-    if (err.error === 'not-allowed') showModal('Micrófono bloqueado', 'Permiso de micrófono denegado.\nHabilitalo en la configuración del navegador.');
-    else if (err.error === 'no-speech') showToast('No se detectó audio. Intentá de nuevo.');
-    else showToast('Error: ' + err.error);
+    recognition = null;
+    recordBtn.style.background = 'var(--green)';
+    recordBtn.textContent = '🎙 Intentar de nuevo';
+    recordBtn.onclick = startVoiceRecording;
+    if (err.error === 'no-speech') {
+      statusEl.textContent = '⚠️ No se detectó voz. Hablá más fuerte.';
+      statusEl.style.color = 'var(--orange)';
+    } else if (err.error === 'not-allowed') {
+      closeVoiceModal();
+      showModal('Micrófono bloqueado', 'Habilitá el micrófono en Configuración del navegador para este sitio.');
+    } else {
+      statusEl.textContent = 'Error: ' + err.error;
+      statusEl.style.color = 'var(--red)';
+    }
   };
+
   recognition.onend = () => {
-    stopVoiceBtn(activeVoiceBtn);
-    recognition = null; activeVoiceBtn = null;
+    if (recognition) return;
+    recordBtn.style.background = 'var(--green)';
+    recordBtn.textContent = '🎙 Seguir dictando';
+    recordBtn.onclick = startVoiceRecording;
+    if (!transcriptEl.value.trim()) {
+      statusEl.textContent = 'No se capturó texto. Intentá de nuevo.';
+      statusEl.style.color = 'var(--orange)';
+    }
   };
-  try { recognition.start(); } catch(e) { stopVoiceBtn(btnId); recognition = null; showToast('No se pudo iniciar: ' + e.message); }
+
+  try { recognition.start(); } catch(e) { showToast('Error al iniciar: ' + e.message); recognition = null; }
+}
+
+function stopVoiceRecording() {
+  if (recognition) { try { recognition.stop(); } catch(e) {} recognition = null; }
+}
+
+function confirmVoiceText() {
+  const text = document.getElementById('voiceTranscript').value.replace(/\s*⏳.*$/, '').trim();
+  if (text && voiceTargetId) {
+    const el = document.getElementById(voiceTargetId);
+    if (el) {
+      el.value += (el.value && !el.value.endsWith(' ') ? ' ' : '') + text + ' ';
+      el.style.borderColor = 'var(--ok)';
+      setTimeout(() => el.style.borderColor = '', 1200);
+    }
+  }
+  closeVoiceModal();
+  showToast('✓ Texto agregado correctamente');
+}
+
+function closeVoiceModal() {
+  if (recognition) { try { recognition.stop(); } catch(e) {} recognition = null; }
+  document.getElementById('voiceModal').style.display = 'none';
+  voiceTargetId = null; activeVoiceBtn = null;
 }
 
 function startVoiceBtn(btnId) {
   const btn = document.getElementById(btnId);
-  if (btn) { btn.style.background = 'var(--orange)'; btn.style.animation = 'pulse 1s infinite'; btn.title = 'Tocá para detener'; }
+  if (btn) { btn.style.background = 'var(--orange)'; btn.style.animation = 'pulse 1s infinite'; }
 }
 function stopVoiceBtn(btnId) {
   const btn = document.getElementById(btnId);
-  if (btn) { btn.style.background = 'var(--green)'; btn.style.animation = ''; btn.title = 'Dictado por voz'; }
+  if (btn) { btn.style.background = 'var(--green)'; btn.style.animation = ''; }
 }
-
 function showVoiceHttpsWarning() {
-  showModal('El micrófono requiere HTTPS', 
-    'El archivo HTML abierto directamente desde el celular no puede acceder al micrófono por restricciones de seguridad del navegador.\n\n✅ SOLUCIÓN: Publicar la app en un servidor HTTPS (gratuito).\n\nContactá a EXIT S.A. para configurarlo — tarda menos de 15 minutos y es sin costo.');
+  showModal('Requiere HTTPS', 'El micrófono solo funciona cuando la app está publicada en un servidor seguro (HTTPS).\n\nPublicala en GitHub Pages y funcionará correctamente.');
 }
 
 function showModal(title, message) {
