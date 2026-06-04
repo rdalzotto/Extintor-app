@@ -1,0 +1,13 @@
+{
+  "name": "EXIT S.A. — Extintores",
+  "short_name": "Extintores",
+  "description": "Relevamiento de extintores EXIT S.A.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#2D6A2D",
+  "theme_color": "#2D6A2D",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
