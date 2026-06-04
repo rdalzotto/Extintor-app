@@ -278,7 +278,10 @@
     <div id="tab-extintores" style="display:none;padding:0;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div style="font-size:15px;font-weight:700;">Extintores del establecimiento</div>
-        <button class="btn btn-outline btn-sm" onclick="addExtinguisher()">+ Agregar</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="sortExtinguishers()" title="Ordenar por número">↕ Ordenar</button>
+          <button class="btn btn-outline btn-sm" onclick="addExtinguisher()">+ Agregar</button>
+        </div>
       </div>
       <div id="extList"></div>
       <button class="btn btn-primary" onclick="switchTab('resumen')">Ver resumen →</button>
@@ -524,7 +527,21 @@ function addExtinguisherObj(num) {
   CHECK_ITEMS.forEach(c=>{ext.checks[c.id]='ok';}); APP.currentAudit.extintores.push(ext);
 }
 
-function addExtinguisher() { const n=APP.currentAudit.extintores.length+1; addExtinguisherObj(n); renderExtList(); showToast('Extintor Nº'+n+' agregado'); }
+function addExtinguisher() {
+  const exts = APP.currentAudit.extintores;
+  const maxNum = exts.length > 0 ? Math.max(...exts.map(e => Number(e.num)||0)) : 0;
+  const n = maxNum + 1;
+  addExtinguisherObj(n); renderExtList();
+  // Auto-expand the new extinguisher so user can edit number immediately
+  setTimeout(()=>{ const b=document.getElementById('extBody'+(exts.length-1)); if(b)b.classList.add('open'); },50);
+  showToast('Extintor Nº'+String(n).padStart(2,'0')+' agregado');
+}
+
+function sortExtinguishers(){
+  APP.currentAudit.extintores.sort((a,b) => (Number(a.num)||0) - (Number(b.num)||0));
+  saveAuditData(); renderExtList();
+  showToast('✓ Extintores ordenados por número');
+}
 
 function renderExtList() {
   const container=document.getElementById('extList'); if(!container||!APP.currentAudit) return;
@@ -535,7 +552,14 @@ function renderExtList() {
     container.innerHTML+=`<div class="ext-row" id="extRow${idx}">
       <div class="ext-header" onclick="toggleExt(${idx})">
         <div class="ext-header-left">
-          <div class="ext-num">${String(ext.num).padStart(2,'0')}</div>
+          <div class="ext-num" style="position:relative;overflow:hidden;">
+            ${ext.fotoPuesto
+              ? `<img src="${ext.fotoPuesto}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;opacity:0.85;">`
+              : ''}
+            <span style="position:relative;z-index:1;${ext.fotoPuesto?'text-shadow:0 0 3px rgba(0,0,0,0.7);':''}">
+              ${String(ext.num).padStart(2,'0')}
+            </span>
+          </div>
           <div><div class="ext-info">${ext.clase||'Sin clase'} — ${ext.capacidad||'?'} kg</div><div class="ext-sub">${ext.ubicacion||'Sin ubicación'}</div></div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -550,7 +574,16 @@ function renderExtList() {
 
 function renderExtBody(ext,idx) {
   const expWarn=checkExpiry(ext);
-  let h=`<div class="field-row3">
+  let h=`<div class="field" style="margin-bottom:10px;">
+    <label style="display:flex;align-items:center;justify-content:space-between;">
+      N° Extintor
+      <span style="font-size:11px;font-weight:400;color:var(--gray-500);">Editá si no arranca en 1</span>
+    </label>
+    <input type="number" min="1" max="999" value="${ext.num}"
+      style="font-size:20px;font-weight:800;color:var(--green);text-align:center;"
+      onchange="updateExtNum(${idx},this.value)">
+  </div>
+  <div class="field-row3">
     <div class="field"><label>Clase</label><select onchange="updateExt(${idx},'clase',this.value)">${['ABC','BC','CO2','HCFC','Agua'].map(c=>`<option ${ext.clase===c?'selected':''}}>${c}</option>`).join('')}</select></div>
     <div class="field"><label>Cap.(kg)</label><select onchange="updateExt(${idx},'capacidad',this.value)">${['2','4','5','6','10','12','25','50'].map(c=>`<option ${ext.capacidad===c?'selected':''}}>${c}</option>`).join('')}</select></div>
     <div class="field"><label>Marbete</label><select onchange="updateExt(${idx},'marbete',this.value)">${['azul','rojo','verde','amarillo','sin marbete'].map(c=>`<option ${ext.marbete===c?'selected':''}}>${c}</option>`).join('')}</select></div>
@@ -565,6 +598,21 @@ function renderExtBody(ext,idx) {
     <div class="field"><label>P. hidráulica</label><input type="month" value="${ext.pruebahid||''}" onchange="updateExt(${idx},'pruebahid',this.value)"></div>
   </div>`;
   if(expWarn) h+=`<div class="alert-banner alert-danger" style="margin-bottom:10px;">⚠️ ${expWarn}</div>`;
+
+  // ── Foto de identificación del puesto ──
+  h+=`<div style="margin-bottom:14px;">
+    <div style="font-size:12px;font-weight:700;color:var(--gray-700);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">📸 Foto del puesto</div>`;
+  if(ext.fotoPuesto){
+    h+=`<div style="position:relative;display:inline-block;">
+      <img src="${ext.fotoPuesto}" style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;border:1.5px solid var(--gray-200);display:block;">
+      <button onclick="removeExtPhoto(${idx})" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:white;border:none;border-radius:50%;width:28px;height:28px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>`;
+  } else {
+    h+=`<button class="btn btn-secondary" style="width:100%;" onclick="document.getElementById('extPhotoInput${idx}').click()">📷 Fotografiar puesto de incendio</button>`;
+  }
+  h+=`<input type="file" id="extPhotoInput${idx}" accept="image/*" capture="environment" style="display:none" onchange="addExtPhoto(${idx},this)">
+  </div>`;
+
   h+=`<div style="font-size:12px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.5px;margin:10px 0 6px;">Ítems de control — IRAM 3517-2 / Decreto 351/79</div>`;
   CHECK_ITEMS.forEach(item=>{
     const val=ext.checks[item.id]||'ok';
@@ -580,9 +628,42 @@ function renderExtBody(ext,idx) {
   return h;
 }
 
+function addExtPhoto(idx, input){
+  if(!input.files[0]) return;
+  const r = new FileReader();
+  r.onload = e => {
+    APP.currentAudit.extintores[idx].fotoPuesto = e.target.result;
+    saveAuditData();
+    // Re-render just this ext body
+    const body = document.getElementById('extBody'+idx);
+    if(body){ body.innerHTML = renderExtBody(APP.currentAudit.extintores[idx], idx); body.classList.add('open'); }
+    showToast('✓ Foto del puesto guardada');
+  };
+  r.readAsDataURL(input.files[0]);
+  input.value = '';
+}
+
+function removeExtPhoto(idx){
+  APP.currentAudit.extintores[idx].fotoPuesto = null;
+  saveAuditData();
+  const body = document.getElementById('extBody'+idx);
+  if(body){ body.innerHTML = renderExtBody(APP.currentAudit.extintores[idx], idx); body.classList.add('open'); }
+  showToast('Foto eliminada');
+}
+
 function toggleExt(idx){ document.getElementById('extBody'+idx).classList.toggle('open'); }
 function updateExt(idx,field,val){ if(APP.currentAudit){ APP.currentAudit.extintores[idx][field]=val; saveAuditData(); } }
-function removeExt(idx){ APP.currentAudit.extintores.splice(idx,1); APP.currentAudit.extintores.forEach((e,i)=>e.num=i+1); renderExtList(); }
+function updateExtNum(idx, val){
+  const n = parseInt(val);
+  if(!n || n<1) return;
+  APP.currentAudit.extintores[idx].num = n;
+  // Update the circle display immediately without full re-render
+  const circle = document.querySelector('#extRow'+idx+' .ext-num');
+  if(circle) circle.textContent = String(n).padStart(2,'0');
+  saveAuditData();
+}
+
+function removeExt(idx){ APP.currentAudit.extintores.splice(idx,1); renderExtList(); }
 
 function setCheck(extIdx,itemId,val){
   APP.currentAudit.extintores[extIdx].checks[itemId]=val;
@@ -837,6 +918,8 @@ async function generateReport(){
       const row=[String(ext.num).padStart(2,'0'),ext.clase||'—',ext.capacidad||'—',ext.ubicacion||'—',ext.nroSerie||'—',ext.proxServicio||'—',ext.pruebahid||'—',nokItems.length>0?'NOK':'OK'];
       cx=M; row.forEach((v,i)=>{ doc.setTextColor(i===7&&v==='NOK'?192:33,i===7&&v==='NOK'?57:37,i===7&&v==='NOK'?43:41); doc.text(v.length>18?v.substring(0,16)+'...':v,cx+1,y+4); cx+=cols[i]; }); doc.setTextColor(33,37,41);
       doc.setDrawColor(220,220,220); doc.line(M,y+6,W-M,y+6); y+=7;
+      // Foto del puesto en PDF (pequeña, a la derecha)
+      if(ext.fotoPuesto){ checkY(32); try{ doc.addImage(ext.fotoPuesto,'JPEG',W-M-28,y-36,26,20); }catch(e){} }
     }); y+=4;
 
     // Desvíos
