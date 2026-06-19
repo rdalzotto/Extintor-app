@@ -909,6 +909,7 @@ function setTodayDate() {
 }
 
 function showScreen(name) {
+  saveAuditData(); // Guardar siempre al cambiar de pantalla
   if(name==='config'){
     const el=document.getElementById('cfg_sheetsUrl');
     if(el) el.value=APP.config.sheetsUrl||'';
@@ -924,6 +925,7 @@ function showScreen(name) {
 }
 
 function switchTab(tab) {
+  saveAuditData(); // Guardar siempre al cambiar de pestaña
   document.querySelectorAll('#screen-audit > div').forEach(d=>d.style.display='none');
   document.getElementById('tab-'+tab).style.display='block';
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -998,21 +1000,21 @@ function renderExtBody(ext,idx) {
     </label>
     <input type="number" min="1" max="999" value="${ext.num}"
       style="font-size:20px;font-weight:800;color:var(--green);text-align:center;"
-      onchange="updateExtNum(${idx},this.value)">
+      oninput="updateExtNum(${idx},this.value)" onchange="updateExtNum(${idx},this.value)">
   </div>
   <div class="field-row3">
-    <div class="field"><label>Clase</label><select onchange="updateExt(${idx},'clase',this.value)">${['ABC','BC','CO2','HCFC','Agua'].map(c=>`<option ${ext.clase===c?'selected':''}}>${c}</option>`).join('')}</select></div>
-    <div class="field"><label>Cap.(kg)</label><select onchange="updateExt(${idx},'capacidad',this.value)">${['2','4','5','6','10','12','25','50'].map(c=>`<option ${ext.capacidad===c?'selected':''}}>${c}</option>`).join('')}</select></div>
-    <div class="field"><label>Marbete</label><select onchange="updateExt(${idx},'marbete',this.value)">${['azul','rojo','verde','amarillo','sin marbete'].map(c=>`<option ${ext.marbete===c?'selected':''}}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label>Clase</label><select oninput="updateExt(${idx},'clase',this.value)" onchange="updateExt(${idx},'clase',this.value)">${['ABC','BC','CO2','HCFC','Agua'].map(c=>`<option ${ext.clase===c?'selected':''}}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label>Cap.(kg)</label><select oninput="updateExt(${idx},'capacidad',this.value)" onchange="updateExt(${idx},'capacidad',this.value)">${['2','4','5','6','10','12','25','50'].map(c=>`<option ${ext.capacidad===c?'selected':''}}>${c}</option>`).join('')}</select></div>
+    <div class="field"><label>Marbete</label><select oninput="updateExt(${idx},'marbete',this.value)" onchange="updateExt(${idx},'marbete',this.value)">${['azul','rojo','verde','amarillo','sin marbete'].map(c=>`<option ${ext.marbete===c?'selected':''}}>${c}</option>`).join('')}</select></div>
   </div>
-  <div class="field"><label>Ubicación</label><input type="text" value="${ext.ubicacion||''}" placeholder="Ej: Hall principal" onchange="updateExt(${idx},'ubicacion',this.value)"></div>
+  <div class="field"><label>Ubicación</label><input type="text" value="${ext.ubicacion||''}" placeholder="Ej: Hall principal" oninput="updateExt(${idx},'ubicacion',this.value)" onchange="updateExt(${idx},'ubicacion',this.value)"></div>
   <div class="field-row">
-    <div class="field"><label>N° Serie</label><input type="text" value="${ext.nroSerie||''}" onchange="updateExt(${idx},'nroSerie',this.value)"></div>
-    <div class="field"><label>Año fabric.</label><input type="number" value="${ext.anioFab||''}" min="1990" max="2035" onchange="updateExt(${idx},'anioFab',this.value)"></div>
+    <div class="field"><label>N° Serie</label><input type="text" value="${ext.nroSerie||''}" oninput="updateExt(${idx},'nroSerie',this.value)" onchange="updateExt(${idx},'nroSerie',this.value)"></div>
+    <div class="field"><label>Año fabric.</label><input type="number" value="${ext.anioFab||''}" min="1990" max="2035" oninput="updateExt(${idx},'anioFab',this.value)" onchange="updateExt(${idx},'anioFab',this.value)"></div>
   </div>
   <div class="field-row">
-    <div class="field"><label>Próx. servicio</label><input type="month" value="${ext.proxServicio||''}" onchange="updateExt(${idx},'proxServicio',this.value)"></div>
-    <div class="field"><label>P. hidráulica</label><input type="month" value="${ext.pruebahid||''}" onchange="updateExt(${idx},'pruebahid',this.value)"></div>
+    <div class="field"><label>Próx. servicio</label><input type="month" value="${ext.proxServicio||''}" oninput="updateExt(${idx},'proxServicio',this.value)" onchange="updateExt(${idx},'proxServicio',this.value)"></div>
+    <div class="field"><label>P. hidráulica</label><input type="month" value="${ext.pruebahid||''}" oninput="updateExt(${idx},'pruebahid',this.value)" onchange="updateExt(${idx},'pruebahid',this.value)"></div>
   </div>`;
   if(expWarn) h+=`<div class="alert-banner alert-danger" style="margin-bottom:10px;">⚠️ ${expWarn}</div>`;
 
@@ -1172,7 +1174,7 @@ function getGPS(){ if(!navigator.geolocation){showToast('GPS no disponible');ret
 let recognition=null;
 let voiceActive = false;
 let silenceTimer = null;
-const SILENCE_MS = 1500; // corta si no hay voz por 1.5 segundos
+const SILENCE_MS = 2000; // corta si no hay voz por 2 segundos
 
 // Corrección automática de términos técnicos mal transcriptos
 const VOICE_CORRECTIONS = [
@@ -1311,9 +1313,7 @@ function startVoice(targetId){
 
   recognition.onerror = ev => {
     if(ev.error === 'no-speech'){
-      // En Android no-speech = silencio detectado → cortar
-      stopVoice(btn);
-      showToast('✓ Dictado finalizado');
+      // No-speech dispara el corte — ya lo maneja el silenceTimer
       return;
     }
     const msg = ev.error === 'not-allowed' ? 'Permiso de micrófono denegado'
@@ -1374,6 +1374,15 @@ function saveAuditData(){
   ['empresa','sector','planta','direccion','gps','tecnico','obs','fecha','hora','email','drive'].forEach(f=>{ const el=document.getElementById('f_'+f); if(el)APP.currentAudit[f]=el.value; });
   saveToStorage();
 }
+
+// Autosave cada 30 segundos para no perder datos
+setInterval(()=>{
+  if(APP.currentAudit){
+    saveAuditData();
+    const sub=document.getElementById("topbarSub");
+    if(sub){ const prev=sub.textContent; sub.textContent="✓ Guardado"; setTimeout(()=>{ sub.textContent=prev; },1500); }
+  }
+}, 30000);
 
 async function generateReport(){
   saveAuditData(); if(!APP.currentAudit)return; showToast('Generando informe PDF...');
@@ -1688,7 +1697,13 @@ function restoreLogoAuditada(){
 }
 
 window.addEventListener('load',init);
-window.addEventListener('beforeunload',saveAuditData);
+window.addEventListener('beforeunload', e => {
+  // Guardar todo antes de cualquier recarga o cierre
+  if(APP.currentAudit){
+    ['empresa','sector','planta','direccion','gps','tecnico','obs','fecha','hora','email','drive'].forEach(f=>{ const el=document.getElementById('f_'+f); if(el)APP.currentAudit[f]=el.value; });
+    try { localStorage.setItem('exitAppV2', JSON.stringify(APP)); } catch(err){}
+  }
+});
 </script>
 </body>
 </html>
